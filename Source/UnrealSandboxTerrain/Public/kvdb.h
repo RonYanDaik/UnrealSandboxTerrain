@@ -399,7 +399,7 @@ namespace kvdb {
 		}
 
 		void close() {
-			if (!filePtr->is_open()) return;
+			if (!filePtr || !filePtr->is_open()) return;
 
 			filePtr->close();
 			dataMap.clear();
