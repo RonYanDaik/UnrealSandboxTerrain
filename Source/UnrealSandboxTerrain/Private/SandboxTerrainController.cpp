@@ -10,7 +10,8 @@
 #include "VdServerComponent.h"
 #include "VdClientComponent.h"
 #include "VoxelMeshComponent.h"
-
+#include "Serialization\ArchiveLoadCompressedProxy.h"
+#include "Serialization\ArchiveSaveCompressedProxy.h"
 
 bool LoadDataFromKvFile(TKvFile& KvFile, const TVoxelIndex& Index, std::function<void(TArray<uint8>&)> Function);
 
@@ -140,6 +141,7 @@ void ASandboxTerrainController::PostLoad() {
 
 void ASandboxTerrainController::BeginPlay() {
 	Super::BeginPlay();
+	
 	UE_LOG(LogTemp, Warning, TEXT("ASandboxTerrainController ---> BeginPlay"));
 
 	if (!GetWorld()) return;

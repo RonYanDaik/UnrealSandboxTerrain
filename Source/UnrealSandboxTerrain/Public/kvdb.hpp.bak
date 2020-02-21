@@ -401,7 +401,11 @@ namespace kvdb {
 		}
 
 		void close() {
+<<<<<<< HEAD:Source/UnrealSandboxTerrain/Public/kvdb.hpp
+			if (filePtr == nullptr || !filePtr->is_open()) return;
+=======
 			if (!filePtr || !filePtr->is_open()) return;
+>>>>>>> ue4_24_a:Source/UnrealSandboxTerrain/Public/kvdb.h
 
 			filePtr->close();
 			dataMap.clear();

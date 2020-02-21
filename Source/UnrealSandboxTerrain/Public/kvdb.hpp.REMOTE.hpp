@@ -136,6 +136,11 @@ namespace kvdb {
 		ulong64 initialDataLength = 0;
 
 		TKeyData freeKeyData;
+
+		TKeyEntry() {
+			for (int i = 0; i < KVDB_KEY_SIZE; i++) freeKeyData[i] = 0;
+		}
+
 	} TKeyEntry;
 
 	typedef TPosWrapper<TKeyEntry> TKeyEntryInfo;
@@ -179,13 +184,10 @@ namespace kvdb {
 		std::shared_ptr<V> valueFromData(TValueDataPtr dataPtr) {
 			if (dataPtr == nullptr) return nullptr;
 
-			if constexpr (std::is_same_v<V, TValueData>) {
-				return std::static_pointer_cast<TValueData>(dataPtr);
-			} else {
-				V* temp = new V();
-				memcpy(temp, dataPtr->data(), dataPtr->size());
-				return std::shared_ptr<V>(temp);
-			}
+			V* temp = new V();
+			memcpy(temp, dataPtr->data(), dataPtr->size());
+
+			return std::shared_ptr<V>(temp);
 		}
 
 		static TKeyData toKeyData(K key) {
@@ -267,7 +269,7 @@ namespace kvdb {
 		}
 
 		ulong64 readTable() {
-			ulong64 tablePos = (ulong64)filePtr->tellp();
+			int tablePos = (int)filePtr->tellp();
 
 			TTableHeader tableHeader;
 			filePtr >> tableHeader;
@@ -299,7 +301,7 @@ namespace kvdb {
 
 		void createNewTable() {
 			filePtr->seekg(0, std::ios::end); // to end-of-file
-			ulong64 newTablePos = (ulong64)filePtr->tellp();
+			int newTablePos = (int)filePtr->tellp();
 
 			// write new table
 			TTableHeader newTable;
@@ -391,12 +393,8 @@ namespace kvdb {
 		KvFile() {
 			assert(sizeof(K) <= KVDB_KEY_SIZE);
 		}
-        
-        ~KvFile() {
-			close();
-		}
 		
-		void setReservedValueSize(uint32 val){
+		void setReservedValueSaize(uint32 val){
 			reservedValueSize = val;
 		}
 
@@ -410,7 +408,7 @@ namespace kvdb {
 			tableList.clear();
 		}
 
-		bool open(const std::string& file) {
+		bool open(std::string& file) {
 			filePtr = new std::fstream(file, std::ios::in | std::ios::out | std::ios::binary);
 
 			if (!filePtr->is_open()) return false;
@@ -435,21 +433,13 @@ namespace kvdb {
 			}
 		}
 
-		bool isExist(const K& k) {
-			TKeyData keyData = toKeyData(k);
-			if (!filePtr->is_open()) return nullptr;
-			std::unique_lock<std::shared_mutex> lock(fileSharedMutex);
-			return !(dataMap.find(keyData) == dataMap.end());
-		}
-
-
-		TValueDataPtr loadData(const K& k) {
+		TValueDataPtr get(const K& k) {
 			TKeyData keyData = toKeyData(k);
 
 			if (!filePtr->is_open()) return nullptr;
             std::unique_lock<std::shared_mutex> lock(fileSharedMutex);
 
-			auto got = dataMap.find(keyData);
+			std::unordered_map<TKeyData, TKeyEntryInfo>::const_iterator got = dataMap.find(keyData);
 			if (got == dataMap.end()) {
 				return nullptr;
 			}
@@ -460,23 +450,18 @@ namespace kvdb {
 			filePtr->seekg(e.dataPos);
 
 			TValueDataPtr dataPtr = TValueDataPtr(new TValueData);
-			dataPtr->resize(e.dataLength);
-
-			if (filePtr->read((char*)dataPtr->data(), e.dataLength)) {
-				return dataPtr;
+			for (unsigned int i = 0; i < e.dataLength; i++) {
+				byte tmp;
+				read(filePtr, tmp);
+				dataPtr->push_back(tmp);
 			}
 
-			return nullptr;
+			return dataPtr;
 		}
 
-		std::shared_ptr<V> load(const K& k) {
-			return valueFromData(loadData(k));
+		std::shared_ptr<V> getVal(const K& k) {
+			return valueFromData(get(k));
 		}
-        
-        
-        std::shared_ptr<V> operator[] (const K& k) {
-            return valueFromData(loadData(k));
-        }
 
 		void erase(const K& k) {
 			TKeyData keyData = toKeyData(k);
@@ -484,18 +469,19 @@ namespace kvdb {
 			if (!filePtr->is_open()) return;
             std::unique_lock<std::shared_mutex> lock(fileSharedMutex);
 
-			auto got = dataMap.find(keyData);
+			std::unordered_map<TKeyData, TKeyEntryInfo>::const_iterator got = dataMap.find(keyData);
 			if (got != dataMap.end()) {
 				TKeyEntryInfo keyInfo = dataMap[keyData];
 				earsePair(keyInfo);
 			}
 		}
 
-		void save(const K& k, const V& v) {
+
+		void put(const K& k, const V& v) {
 			TKeyData keyData = toKeyData(k);
 			TValueData valueData;
 
-			if constexpr(std::is_same_v<V, TValueData>) {
+			if (typeid(v) == typeid(TValueData)) {
 				valueData = std::move((TValueData)v);
 			} else {
 				toValueData(v, valueData);
@@ -514,14 +500,14 @@ namespace kvdb {
 			}
 		}
 
-		static bool create(const std::string& file, const std::unordered_map<K, V>& test) {
+		static bool create(std::string& file, const std::unordered_map<K, V>& test) {
 			std::ofstream outFile(file, std::ios::out | std::ios::binary);
 
 			if (!outFile) return false;
 
 			std::ofstream* outFilePtr = &outFile;
 
-			static const ulong64 max_key_records = KVDB_RESERVED_TABLE_SIZE;
+			static const int max_key_records = KVDB_RESERVED_TABLE_SIZE;
 			const ulong64 keyRecords = (test.size() > max_key_records) ? test.size() : max_key_records;
 
 			// save file header
@@ -535,7 +521,7 @@ namespace kvdb {
 			tableHeader.recordCount = keyRecords;
 			outFilePtr << tableHeader;
 
-			ulong64 bodyDataOffset = (ulong64)(outFile.tellp()) + sizeof(TKeyEntry) * keyRecords;
+			const ulong64 bodyDataOffset = (int)(outFile.tellp()) + sizeof(TKeyEntry) * keyRecords;
 
 			std::vector<byte> dataBody;
 
@@ -545,7 +531,7 @@ namespace kvdb {
 				entry.dataPos = dataBody.size() + bodyDataOffset;
 
 				TValueData valueData;
-				if constexpr (std::is_same_v<V, TValueData>) {
+				if (typeid(e.second) == typeid(TValueData)) {
 					valueData = std::move((TValueData)e.second);
 				} else {
 					toValueData(e.second, valueData);

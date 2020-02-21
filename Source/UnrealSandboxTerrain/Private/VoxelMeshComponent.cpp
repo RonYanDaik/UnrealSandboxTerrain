@@ -371,6 +371,7 @@ public:
 		FMeshBatch MeshBatch;
 		MeshBatch.Elements.Empty(1);
 
+		//MeshBatch.PreparePrimitiveUniformBuffer()
 		MeshBatch.bWireframe = false;
 		MeshBatch.VertexFactory = &Section->VertexFactory;
 		MeshBatch.MaterialRenderProxy = Material;
@@ -383,13 +384,16 @@ public:
 
 		FMeshBatchElement* BatchElement = new(MeshBatch.Elements) FMeshBatchElement;
 		BatchElement->IndexBuffer = &Section->IndexBuffer;
-		BatchElement->PrimitiveUniformBuffer = CreatePrimitiveUniformBufferImmediate(GetLocalToWorld(), GetBounds(), GetLocalBounds(), true, UseEditorDepthTest());
+		FBoxSphereBounds PreSkinnedLocalBounds;
+		GetPreSkinnedLocalBounds(PreSkinnedLocalBounds);
+		BatchElement->PrimitiveUniformBuffer = 0;// CreatePrimitiveUniformBufferImmediate(GetLocalToWorld(), GetBounds(), GetLocalBounds(), PreSkinnedLocalBounds, true, DrawsVelocity());
+		//BatchElement->PrimitiveUniformBufferResource =  GetUniformBuffer();
 		BatchElement->FirstIndex = 0;
 		BatchElement->NumPrimitives = Section->IndexBuffer.Indices.Num() / 3;
 		BatchElement->MinVertexIndex = 0;
 		BatchElement->MaxVertexIndex = Section->VertexBuffers.PositionVertexBuffer.GetNumVertices() - 1;
 		BatchElement->UserData = TerrainMeshBatchInfo;
-
+		
 		PDI->DrawMesh(MeshBatch, FLT_MAX);
 	}
 
@@ -401,7 +405,7 @@ public:
 				LodSectionProxy->TerrainMeshBatchInfo.ZoneOriginPtr = &ZoneOrigin;
 				for (FProcMeshProxySection* MatSection : LodSectionProxy->MaterialMeshPtrArray) {
 					if (MatSection != nullptr) {
-						FMaterialRenderProxy* MaterialInstance = MatSection->Material->GetRenderProxy(IsSelected());
+						FMaterialRenderProxy* MaterialInstance = MatSection->Material->GetRenderProxy(/*IsSelected()*/);
 						DrawStaticMeshSection(PDI, MatSection, MaterialInstance, &LodSectionProxy->TerrainMeshBatchInfo);
 					}
 				}
@@ -417,7 +421,7 @@ public:
 		FColoredMaterialRenderProxy* WireframeMaterialInstance = NULL;
 		if (bWireframe) {
 			WireframeMaterialInstance = new FColoredMaterialRenderProxy(
-				GEngine->WireframeMaterial ? GEngine->WireframeMaterial->GetRenderProxy(IsSelected()) : NULL,
+				GEngine->WireframeMaterial ? GEngine->WireframeMaterial->GetRenderProxy(/*IsSelected()*/) : NULL,
 				FLinearColor(0, 0.5f, 1.f)
 			);
 
@@ -439,7 +443,7 @@ public:
 					// draw each material section
 					for (FProcMeshProxySection* MatSection : LodSectionProxy->MaterialMeshPtrArray) {
 						if (MatSection != nullptr &&  MatSection->Material != nullptr) {
-							FMaterialRenderProxy* MaterialProxy = bWireframe ? WireframeMaterialInstance : MatSection->Material->GetRenderProxy(IsSelected());
+							FMaterialRenderProxy* MaterialProxy = bWireframe ? WireframeMaterialInstance : MatSection->Material->GetRenderProxy();// (IsSelected());
 							DrawDynamicMeshSection(MatSection, Collector, MaterialProxy, bWireframe, ViewIndex);
 						}
 					}
@@ -453,7 +457,7 @@ public:
 							if (NeighborLodIndex != LodIndex) {
 								for (FProcMeshProxySection* MatSection : LodSectionProxy->NormalPatchPtrArray[i]) {
 									if (MatSection != nullptr &&  MatSection->Material != nullptr) {
-										FMaterialRenderProxy* MaterialProxy = bWireframe ? WireframeMaterialInstance : MatSection->Material->GetRenderProxy(IsSelected());
+										FMaterialRenderProxy* MaterialProxy = bWireframe ? WireframeMaterialInstance : MatSection->Material->GetRenderProxy(/*IsSelected()*/);
 										DrawDynamicMeshSection(MatSection, Collector, MaterialProxy, bWireframe, ViewIndex);
 									}
 								}
@@ -475,7 +479,12 @@ public:
 		Mesh.bWireframe = bWireframe;
 		Mesh.VertexFactory = &Section->VertexFactory;
 		Mesh.MaterialRenderProxy = MaterialProxy;
-		BatchElement.PrimitiveUniformBuffer = CreatePrimitiveUniformBufferImmediate(GetLocalToWorld(), GetBounds(), GetLocalBounds(), true, UseEditorDepthTest());
+		Mesh.bRequiresPerElementVisibility = true;
+
+		FBoxSphereBounds PreSkinnedLocalBounds;
+		GetPreSkinnedLocalBounds(PreSkinnedLocalBounds);
+
+		BatchElement.PrimitiveUniformBuffer = CreatePrimitiveUniformBufferImmediate(GetLocalToWorld(), GetBounds(), GetLocalBounds(), PreSkinnedLocalBounds, true, DrawsVelocity());
 		BatchElement.FirstIndex = 0;
 		BatchElement.NumPrimitives = Section->IndexBuffer.Indices.Num() / 3;
 		BatchElement.MinVertexIndex = 0;
